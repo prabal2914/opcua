@@ -1,0 +1,201 @@
+===============================
+INFLUXDB COMMANDS & QUERIES
+(OPC UA → InfluxDB PROJECT)
+===============================
+
+--------------------------------
+BASIC SERVICE COMMANDS
+--------------------------------
+
+Start InfluxDB
+sudo systemctl start influxdb
+
+Stop InfluxDB
+sudo systemctl stop influxdb
+
+Restart InfluxDB
+sudo systemctl restart influxdb
+
+Check Status
+sudo systemctl status influxdb
+
+
+--------------------------------
+INFLUX CLI
+--------------------------------
+
+Login
+influx login
+
+Show Organizations
+influx org list
+
+Show Buckets
+influx bucket list
+
+Create Bucket
+influx bucket create -n opcua_data -o my-org
+
+Delete Bucket
+influx bucket delete -n opcua_data -o my-org
+
+
+--------------------------------
+WRITE DATA FROM CLI
+--------------------------------
+
+Write Single Point
+influx write \
+  --bucket opcua_data \
+  --org my-org \
+  --token YOUR_TOKEN \
+  "process_data temperature=45.6,mashTime=1200"
+
+Write With Timestamp (seconds)
+influx write \
+  --bucket opcua_data \
+  --org my-org \
+  --precision s \
+  "process_data temperature=50,mashTime=1500 1710000000"
+
+
+--------------------------------
+FLUX QUERIES (READ DATA)
+--------------------------------
+
+Read All Data (Last 10 min)
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+
+Temperature Only
+from(bucket: "opcua_data")
+  |> range(start: -30m)
+  |> filter(fn: (r) => r._field == "temperature")
+
+MashTime Only
+from(bucket: "opcua_data")
+  |> range(start: -30m)
+  |> filter(fn: (r) => r._field == "mashTime")
+
+Both Temperature & MashTime
+from(bucket: "opcua_data")
+  |> range(start: -30m)
+  |> filter(fn: (r) => r._measurement == "process_data")
+
+Latest Temperature
+from(bucket: "opcua_data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> last()
+
+Latest MashTime
+from(bucket: "opcua_data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._field == "mashTime")
+  |> last()
+
+
+--------------------------------
+PIVOT (BOTH VALUES IN ONE ROW)
+--------------------------------
+
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> filter(fn: (r) => r._measurement == "process_data")
+  |> pivot(
+      rowKey: ["_time"],
+      columnKey: ["_field"],
+      valueColumn: "_value"
+  )
+
+
+--------------------------------
+DOWNSAMPLING (IMPORTANT FOR ms DATA)
+--------------------------------
+
+Average Every 1 Second
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> aggregateWindow(every: 1s, fn: mean)
+
+Downsample Both Fields
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> filter(fn: (r) => r._measurement == "process_data")
+  |> aggregateWindow(every: 1s, fn: mean)
+
+
+--------------------------------
+MIN / MAX / MEAN
+--------------------------------
+
+Min Temperature
+from(bucket: "opcua_data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> min()
+
+Max Temperature
+from(bucket: "opcua_data")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> max()
+
+Mean Temperature
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> mean()
+
+
+--------------------------------
+COUNT / DEBUG
+--------------------------------
+
+Count Total Points
+from(bucket: "opcua_data")
+  |> range(start: -1h)
+  |> count()
+
+Last 10 Records
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> tail(n: 10)
+
+Sort Latest First
+from(bucket: "opcua_data")
+  |> range(start: -10m)
+  |> sort(columns: ["_time"], desc: true)
+
+
+--------------------------------
+ALERT STYLE QUERY
+--------------------------------
+
+Temperature > 80
+from(bucket: "opcua_data")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._field == "temperature")
+  |> filter(fn: (r) => r._value > 80)
+
+
+--------------------------------
+RETENTION POLICY
+--------------------------------
+
+Set Retention (UI)
+Data → Buckets → opcua_data → Edit
+Keep data for: 30 days
+
+
+--------------------------------
+IMPORTANT NOTES
+--------------------------------
+
+• Flux ALWAYS needs range()
+• Fields are stored separately
+• Use pivot() to see multiple fields together
+• Use aggregateWindow() for dashboards
+• Avoid high-cardinality tags
+• ms data should be downsampled for UI
